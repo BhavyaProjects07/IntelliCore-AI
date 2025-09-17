@@ -236,3 +236,72 @@ If the summary does not mention something, reply: "⚠️ Not available in the p
 
         except Exception as e:
             return Response({"error": f"Gemini chat failed: {str(e)}"}, status=500)
+
+
+
+from gtts import gTTS
+import tempfile
+import os
+from django.conf import settings
+
+
+# views.py (AudioSummarizeView)
+class AudioSummarizeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, session_id):
+        try:
+            session = SummarizationSession.objects.get(id=session_id, user=request.user)
+            text_summary = session.summary_text
+
+            # ✅ Get requested language (default: English)
+            lang = request.data.get("language", "en")
+
+            # ✅ Build base narration prompt
+            narration_prompt = f"""
+                Rewrite the following summary into a natural, human-like spoken narration. 
+                - Remove all markdown, symbols like ** or ##, and any formatting. 
+                - Write in smooth, conversational English. 
+                - Do not mention that this is a summary. 
+                - Pretend you are narrating the content aloud for an audiobook.
+
+                ### Original Summary:
+                {text_summary}
+            """
+
+            # 🔹 If Hindi selected, regenerate summary in Hindi first
+            if lang == "hi":
+                narration_prompt = f"""
+                    Translate the following summary into **fluent Hindi**, 
+                    then rewrite it in a natural, spoken narration style (like an audiobook). 
+                    Avoid markdown/symbols, make it smooth and conversational.
+
+                    ### Original Summary:
+                    {text_summary}
+                """
+
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[types.Content(role="user", parts=[types.Part(text=narration_prompt)])]
+            )
+            narration = response.text.strip()
+
+            # ✅ Convert narration to audio using gTTS
+            tts = gTTS(narration, lang=lang)
+
+            audio_dir = os.path.join(settings.MEDIA_ROOT, "audio")
+            os.makedirs(audio_dir, exist_ok=True)
+            file_path = os.path.join(audio_dir, f"summary_{session.id}_{lang}.mp3")
+
+            tts.save(file_path)
+
+            audio_url = request.build_absolute_uri(
+                f"{settings.MEDIA_URL}audio/summary_{session.id}_{lang}.mp3"
+            )
+
+            return Response({"audio_url": audio_url, "narration": narration}, status=200)
+
+        except SummarizationSession.DoesNotExist:
+            return Response({"error": "Session not found"}, status=404)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
