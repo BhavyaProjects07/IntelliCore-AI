@@ -1,13 +1,22 @@
 import os
 import json
 import csv
+import requests
+import tempfile
 import docx
 import pdfplumber
 from bs4 import BeautifulSoup
+from PIL import Image
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
-from .serializers import DocumentSerializer, SummarizationSessionSerializer, SummarizationMessageSerializer
+
+from .serializers import (
+    DocumentSerializer,
+    SummarizationSessionSerializer,
+    SummarizationMessageSerializer,
+)
 from .models import Document, SummarizationSession, SummarizationMessage
 
 # ✅ Gemini
@@ -16,57 +25,65 @@ from google.genai import types
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# ---------------- TEXT EXTRACTION ---------------- #
-from PIL import Image
-
-
-def extract_text_from_file(file_path):
-    ext = os.path.splitext(file_path)[-1].lower()
+# ---------------- TEXT EXTRACTION (Cloudinary URL) ---------------- #
+def extract_text_from_file(file_url):
+    ext = os.path.splitext(file_url)[-1].lower()
     text = ""
 
     try:
+        # Download file from Cloudinary URL into temp file
+        response = requests.get(file_url, stream=True)
+        response.raise_for_status()
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
+            for chunk in response.iter_content(chunk_size=8192):
+                tmp_file.write(chunk)
+            tmp_path = tmp_file.name
+
         if ext == ".pdf":
-            with pdfplumber.open(file_path) as pdf:
+            with pdfplumber.open(tmp_path) as pdf:
                 for page in pdf.pages:
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
 
         elif ext == ".docx":
-            doc = docx.Document(file_path)
+            doc = docx.Document(tmp_path)
             for para in doc.paragraphs:
                 text += para.text + "\n"
 
         elif ext == ".csv":
-            with open(file_path, newline="", encoding="utf-8", errors="ignore") as f:
+            with open(tmp_path, newline="", encoding="utf-8", errors="ignore") as f:
                 reader = csv.reader(f)
                 for row in reader:
                     text += ", ".join(row) + "\n"
 
         elif ext == ".json":
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
                 data = json.load(f)
                 text = json.dumps(data, indent=2)
 
         elif ext in [".html", ".htm", ".xml"]:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
                 soup = BeautifulSoup(f, "html.parser")
                 text = soup.get_text(separator="\n")
 
         elif ext in [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"]:
-            # OCR for image files
-            img = Image.open(file_path)
-            
+            # OCR for image files (can integrate pytesseract if needed)
+            img = Image.open(tmp_path)
+            text = "⚠️ OCR not implemented yet for images."
 
         else:  # fallback: plain text
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read()
 
+        os.remove(tmp_path)
+
     except Exception as e:
-        text = f"⚠️ Error extracting text from {os.path.basename(file_path)}: {str(e)}"
+        text = f"⚠️ Error extracting text from {os.path.basename(file_url)}: {str(e)}"
 
     if not text.strip():
-        text = f"⚠️ Could not extract readable text from {os.path.basename(file_path)}. File may be scanned or empty."
+        text = f"⚠️ Could not extract readable text from {os.path.basename(file_url)}."
 
     return text.strip()
 
@@ -79,6 +96,7 @@ class DocumentUploadView(APIView):
         serializer = DocumentSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             document = serializer.save(user=request.user)
+            # ✅ Return Cloudinary URL instead of local path
             return Response(DocumentSerializer(document).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -101,7 +119,7 @@ class SummarizeView(APIView):
         if not docs.exists():
             return Response({"error": "No documents found"}, status=400)
 
-        combined_text = "\n\n".join([extract_text_from_file(d.file.path) for d in docs])
+        combined_text = "\n\n".join([extract_text_from_file(d.file.url) for d in docs])
 
         if not combined_text.strip():
             return Response(
@@ -238,14 +256,10 @@ If the summary does not mention something, reply: "⚠️ Not available in the p
             return Response({"error": f"Gemini chat failed: {str(e)}"}, status=500)
 
 
-
+# ---------------- AUDIO SUMMARIZATION ---------------- #
 from gtts import gTTS
-import tempfile
-import os
 from django.conf import settings
 
-
-# views.py (AudioSummarizeView)
 class AudioSummarizeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -254,31 +268,17 @@ class AudioSummarizeView(APIView):
             session = SummarizationSession.objects.get(id=session_id, user=request.user)
             text_summary = session.summary_text
 
-            # ✅ Get requested language (default: English)
             lang = request.data.get("language", "en")
 
-            # ✅ Build base narration prompt
             narration_prompt = f"""
                 Rewrite the following summary into a natural, human-like spoken narration. 
                 - Remove all markdown, symbols like ** or ##, and any formatting. 
-                - Write in smooth, conversational English. 
-                - Do not mention that this is a summary. 
+                - Write in smooth, conversational { 'Hindi' if lang == 'hi' else 'English' }. 
                 - Pretend you are narrating the content aloud for an audiobook.
 
                 ### Original Summary:
                 {text_summary}
             """
-
-            # 🔹 If Hindi selected, regenerate summary in Hindi first
-            if lang == "hi":
-                narration_prompt = f"""
-                    Translate the following summary into **fluent Hindi**, 
-                    then rewrite it in a natural, spoken narration style (like an audiobook). 
-                    Avoid markdown/symbols, make it smooth and conversational.
-
-                    ### Original Summary:
-                    {text_summary}
-                """
 
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
@@ -286,7 +286,7 @@ class AudioSummarizeView(APIView):
             )
             narration = response.text.strip()
 
-            # ✅ Convert narration to audio using gTTS
+            # ✅ Convert narration to audio
             tts = gTTS(narration, lang=lang)
 
             audio_dir = os.path.join(settings.MEDIA_ROOT, "audio")

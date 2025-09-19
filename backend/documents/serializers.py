@@ -1,11 +1,16 @@
-from rest_framework import serializers
-from .models import Document
 import os
+from rest_framework import serializers
+from .models import Document, SummarizationSession, SummarizationMessage
 
+
+# ---------------- DOCUMENT SERIALIZER ---------------- #
 class DocumentSerializer(serializers.ModelSerializer):
+    # ✅ Always return the Cloudinary URL instead of relative path
+    file_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Document
-        fields = ["id", "user", "file", "uploaded_at"]
+        fields = ["id", "user", "file", "file_url", "uploaded_at"]
         read_only_fields = ["user", "uploaded_at"]
 
     def create(self, validated_data):
@@ -13,7 +18,6 @@ class DocumentSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
     def validate_file(self, value):
-        # ✅ Add all allowed extensions here
         allowed_extensions = [
             ".txt", ".pdf", ".docx", ".csv", ".json",
             ".html", ".htm", ".xml",
@@ -24,15 +28,21 @@ class DocumentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"❌ Unsupported file type: {ext}")
         return value
 
+    def get_file_url(self, obj):
+        if obj.file:
+            try:
+                return obj.file.url  # ✅ Cloudinary gives absolute URL
+            except Exception:
+                return None
+        return None
 
 
-from rest_framework import serializers
-from .models import SummarizationSession, SummarizationMessage
-
+# ---------------- SUMMARIZATION SERIALIZERS ---------------- #
 class SummarizationMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = SummarizationMessage
         fields = "__all__"
+
 
 class SummarizationSessionSerializer(serializers.ModelSerializer):
     messages = SummarizationMessageSerializer(many=True, read_only=True)
