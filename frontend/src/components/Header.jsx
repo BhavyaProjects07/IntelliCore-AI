@@ -1,13 +1,10 @@
 "use client"
 
-
-
-
 import { useState, useEffect, useRef } from "react"
-import { Sun, Moon, Menu, X, User, LogOut, UserPlus } from "lucide-react"
+import { Sun, Moon, User, LogOut, UserPlus, X } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 
-const Header = ({ theme, toggleTheme }) => {
+const Header = ({ theme, toggleTheme, toggleSidebar, isSidebarOpen }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [username, setUsername] = useState(null)
@@ -17,10 +14,8 @@ const Header = ({ theme, toggleTheme }) => {
   // Load username from localStorage on mount
   useEffect(() => {
     const storedName = localStorage.getItem("username")
-    // console.log("Loaded username from localStorage:", storedName)
     if (storedName) setUsername(storedName)
 
-    // Listen to changes in localStorage (login/logout from other tabs)
     function handleStorageChange() {
       const name = localStorage.getItem("username")
       setUsername(name)
@@ -31,14 +26,12 @@ const Header = ({ theme, toggleTheme }) => {
   }, [])
 
   const handleLogout = () => {
-  localStorage.removeItem("username")
-  localStorage.removeItem("token")
-  // if you also store Google ID token or profile later, clear it here
-  setUsername(null)
-  setIsDropdownOpen(false)
-  navigate("/signin")   // ✅ better to go signin instead of signup
-}
-
+    localStorage.removeItem("username")
+    localStorage.removeItem("token")
+    setUsername(null)
+    setIsDropdownOpen(false)
+    navigate("/signin")
+  }
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -57,6 +50,22 @@ const Header = ({ theme, toggleTheme }) => {
     <header className="header">
       <div className="container">
         <div className="header-content">
+          {/* ✅ Leftmost Hamburger for Sidebar toggle (ChatGPT style) */}
+          <button
+            onClick={toggleSidebar}
+            className="mr-3 p-2 rounded-md hover:bg-gray-800 transition-colors flex flex-col justify-center items-center space-y-1"
+            aria-label="Toggle sidebar"
+          >
+            {isSidebarOpen ? (
+              <X size={20} className="text-white" />
+            ) : (
+              <>
+                <span className="block w-5 h-0.5 bg-white rounded"></span>
+                <span className="block w-5 h-0.5 bg-white rounded"></span>
+              </>
+            )}
+          </button>
+
           <div className="logo animate-slide-left">
             <span className="logo-text gradient-text">DarkCore</span>
             <span className="logo-subtitle">AI</span>
@@ -106,12 +115,18 @@ const Header = ({ theme, toggleTheme }) => {
               </Link>
             )}
 
+            {/* Mobile nav toggle */}
             <button 
               className="menu-toggle" 
               onClick={() => setIsMenuOpen(!isMenuOpen)} 
               aria-label="Toggle menu"
             >
-              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              {isMenuOpen ? <X size={24} /> : (
+                <>
+                  <span className="block w-6 h-0.5 bg-white rounded"></span>
+                  <span className="block w-6 h-0.5 bg-white rounded mt-1"></span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -190,22 +205,6 @@ const Header = ({ theme, toggleTheme }) => {
           display: flex;
           align-items: center;
           gap: 1rem;
-        }
-
-        .theme-toggle {
-          background: var(--bg-tertiary);
-          border: 1px solid var(--border-color);
-          color: var(--text-primary);
-          padding: 0.5rem;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.3s ease;
-        }
-
-        .theme-toggle:hover {
-          background: var(--accent-primary);
-          color: var(--bg-primary);
-          transform: scale(1.1);
         }
 
         .menu-toggle {

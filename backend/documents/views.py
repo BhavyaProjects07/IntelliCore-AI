@@ -18,7 +18,7 @@ client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # ---------------- TEXT EXTRACTION ---------------- #
 from PIL import Image
-import pytesseract
+
 
 def extract_text_from_file(file_path):
     ext = os.path.splitext(file_path)[-1].lower()
@@ -56,7 +56,7 @@ def extract_text_from_file(file_path):
         elif ext in [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"]:
             # OCR for image files
             img = Image.open(file_path)
-            text = pytesseract.image_to_string(img)
+            
 
         else:  # fallback: plain text
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:

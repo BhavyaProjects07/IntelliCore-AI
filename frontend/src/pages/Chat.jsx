@@ -9,13 +9,7 @@ import ResultsDisplay from "../components/ResultsDisplay"
 import QuickQueryBar from "../components/QuickQueryBar"
 import Sidebar from "../components/Sidebar"
 
-import {
-  Button,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "../components/UIComponents"
+import { Button, Tabs, TabsList, TabsTrigger, TabsContent } from "../components/UIComponents"
 import Header from "../components/Header"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -23,6 +17,7 @@ export default function Chat() {
   const [isSummarizing, setIsSummarizing] = useState(false)
   const [theme, setTheme] = useState("dark")
   const [refreshSidebar, setRefreshSidebar] = useState(0)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
@@ -36,6 +31,18 @@ export default function Chat() {
   })
   const [quickQuery, setQuickQuery] = useState("")
   const [showAuthPopup, setShowAuthPopup] = useState(false)
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen)
+  }
+
+  const closeSidebar = () => {
+    setIsSidebarOpen(false)
+  }
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark")
+  }
 
   const handleAction = (action) => {
     if (!localStorage.getItem("token")) {
@@ -124,14 +131,13 @@ export default function Chat() {
   const handleSummarize = async () => {
     if (!uploadedFiles.length) return alert("Upload at least one file first!")
 
-    setIsSummarizing(true) // ✅ show loader right away
+    setIsSummarizing(true)
 
     try {
       const token = localStorage.getItem("token")
       const fileIds = uploadedFiles.map((f) => f.backendId)
       const BASE_URL = import.meta.env.VITE_BASIC_URL
 
-      // Simulate short delay so loader is visible even on fast errors
       await new Promise((res) => setTimeout(res, 1000))
 
       const res = await fetch(`${BASE_URL}documents/summarize/`, {
@@ -147,56 +153,49 @@ export default function Chat() {
       console.log("Summarize response:", data)
 
       if (res.ok && data.summary) {
-  const newResult = {
-    id: Date.now(),
-    title: "Summary Result",
-    content: data.summary,
-    timestamp: new Date().toLocaleTimeString(),
-  }
+        const newResult = {
+          id: data.session_id,
+          title: "Summary Result",
+          content: data.summary,
+          timestamp: new Date().toLocaleTimeString(),
+        }
 
-  setResults((prev) => ({
-    ...prev,
-    summaries: [newResult, ...prev.summaries],
-  }))
-  setActiveTab("results")
+        setResults((prev) => ({
+          ...prev,
+          summaries: [newResult, ...prev.summaries],
+        }))
+        setActiveTab("results")
 
-  // --- NEW: if backend returned session data, add it to the sidebar immediately ---
-  // preferred backend response: { summary: "...", session_id: 42, title: "...", created_at: "..." }
-  const sid = data.session_id || data.session?.id || null
-  if (sid) {
-    const newSession = {
-      id: sid,
-      title: data.title || data.session?.title || `Summarization "${uploadedFiles?.[0]?.name || sid}"`,
-      created_at: data.created_at || data.session?.created_at || new Date().toISOString(),
-      summary_text: data.summary,
-    }
+        const sid = data.session_id || data.session?.id || null
+        if (sid) {
+          const newSession = {
+            id: sid,
+            title: data.title || data.session?.title || `Summarization "${uploadedFiles?.[0]?.name || sid}"`,
+            created_at: data.created_at || data.session?.created_at || new Date().toISOString(),
+            summary_text: data.summary,
+          }
 
-    // 1) add to parent sessions state (optional)
-    setSessions((prev) => {
-      if (prev.find((p) => String(p.id) === String(newSession.id))) return prev
-      return [newSession, ...prev]
-    })
+          setSessions((prev) => {
+            if (prev.find((p) => String(p.id) === String(newSession.id))) return prev
+            return [newSession, ...prev]
+          })
 
-    // 2) dispatch a custom event the Sidebar listens to (ensures instant UI update)
-    try {
-      window.dispatchEvent(new CustomEvent("summaries:added", { detail: newSession }))
-    } catch (err) {
-      // fallback for older browsers
-      window.dispatchEvent(new Event("storage"))
-    }
-  }
+          try {
+            window.dispatchEvent(new CustomEvent("summaries:added", { detail: newSession }))
+          } catch (err) {
+            window.dispatchEvent(new Event("storage"))
+          }
+        }
 
-  // 3) always nudge sidebar to re-fetch (defensive)
-  setRefreshSidebar((prev) => prev + 1)
-}
- else {
+        setRefreshSidebar((prev) => prev + 1)
+      } else {
         alert(data.error || "Summarization failed")
       }
     } catch (err) {
       console.error("Summarize error:", err)
       alert("Error while summarizing")
     } finally {
-      setIsSummarizing(false) // ✅ always hide loader
+      setIsSummarizing(false)
     }
   }
 
@@ -214,73 +213,80 @@ export default function Chat() {
       ],
     }))
     setActiveTab("results")
+    closeSidebar()
   }
-
 
   return (
     <div
-    className={`min-h-screen transition-colors duration-300 font-sans overflow-hidden relative ${theme === "dark" ? "bg-black text-white" : "bg-white text-black"
-    }`}
+      className={`min-h-screen transition-colors duration-300 font-sans overflow-hidden relative ${
+        theme === "dark" ? "bg-black text-white" : "bg-white text-black"
+      }`}
     >
-      <Header />
+      <Header toggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} theme={theme} toggleTheme={toggleTheme} />
       <TailwindAndAnimations />
       <FloatingBackground />
 
+      <Sidebar
+        onSelectSession={handleSelectSession}
+        onCreateLocalSession={(session) => {
+          setSessions((prev) => [session, ...prev])
+          handleSelectSession(session)
+        }}
+        refreshTrigger={refreshSidebar}
+        isOpen={isSidebarOpen}
+        onClose={closeSidebar}
+      />
+
       {/* Main Flex Layout: Sidebar + Main Content */}
       <div className="flex">
-        {/* Sidebar */}
-        <Sidebar
-          onSelectSession={handleSelectSession}
-          onCreateLocalSession={(session) => {
-            setSessions((prev) => [session, ...prev])
-            handleSelectSession(session)
-          }}
-          refreshTrigger={refreshSidebar}   // trigger re-fetch after summarize
-        />
+        <div
+          className={`${
+            isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
+        ></div>
 
-        {/* Main Content */}
-        <div className="flex-1 relative z-10 ml-72">
-
-          <section className="py-20 px-6 text-center animate-fade-in">
+        <div className="flex-1 relative z-10 md:ml-64 lg:ml-72">
+          <section className="py-8 sm:py-12 md:py-16 lg:py-20 px-3 sm:px-4 lg:px-6 text-center animate-fade-in">
             <div className="container mx-auto max-w-5xl">
-              <h1 className="text-6xl md:text-7xl font-bold mb-8 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent leading-tight">
-                Your Personal Knowledge Lab
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl 2xl:text-7xl font-bold mb-4 sm:mb-6 lg:mb-8 text-white leading-tight">
+                <span className="bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+                  Your Personal Knowledge Lab
+                </span>
               </h1>
-              <p className="text-xl md:text-2xl text-white/70 mb-12 leading-relaxed max-w-3xl mx-auto">
-                Upload documents, explore insights, and transform knowledge into
-                action with AI-powered intelligence.
+              <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl text-white/70 mb-6 sm:mb-8 lg:mb-12 leading-relaxed max-w-3xl mx-auto px-2">
+                Upload documents, explore insights, and transform knowledge into action with AI-powered intelligence.
               </p>
             </div>
           </section>
 
-          <div className="container mx-auto px-6">
+          <div className="container mx-auto px-3 sm:px-4 lg:px-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <div className="flex justify-center mb-12">
-                <TabsList className="grid grid-cols-2 w-full max-w-md">
-                  <TabsTrigger value="upload">Upload & Actions</TabsTrigger>
-                  <TabsTrigger value="results">Results</TabsTrigger>
+              <div className="flex justify-center mb-6 sm:mb-8 lg:mb-12">
+                <TabsList className="grid grid-cols-2 w-full max-w-sm sm:max-w-md">
+                  <TabsTrigger value="upload" className="text-xs sm:text-sm lg:text-base px-2 sm:px-4">
+                    Upload & Actions
+                  </TabsTrigger>
+                  <TabsTrigger value="results" className="text-xs sm:text-sm lg:text-base px-2 sm:px-4">
+                    Results
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
-              <TabsContent value="upload" className="space-y-12">
+              <TabsContent value="upload" className="space-y-6 sm:space-y-8 lg:space-y-12">
                 <FileUpload
                   uploadedFiles={uploadedFiles}
                   setUploadedFiles={setUploadedFiles}
                   handleFileUpload={handleFileUpload}
                 />
-                <ActionButtons
-                  uploadedFiles={uploadedFiles}
-                  handleSummarize={handleSummarize}
-                  isSummarizing={isSummarizing} // ✅ loader state passed down
-                />
+                <ActionButtons uploadedFiles={uploadedFiles} handleAction={handleAction} />
               </TabsContent>
 
-              <TabsContent value="results" className="space-y-8">
+              <TabsContent value="results" className="space-y-4 sm:space-y-6 lg:space-y-8">
                 <ResultsDisplay results={results} />
               </TabsContent>
             </Tabs>
 
-            <div className="mt-12 mb-8">
+            <div className="mt-6 sm:mt-8 lg:mt-12 mb-4 sm:mb-6 lg:mb-8">
               <QuickQueryBar
                 quickQuery={quickQuery}
                 setQuickQuery={setQuickQuery}
@@ -292,37 +298,44 @@ export default function Chat() {
         </div>
       </div>
 
-      {/* Auth Popup */}
       <AnimatePresence>
         {showAuthPopup && (
           <motion.div
-            className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-md z-50"
+            className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-md z-50 p-3 sm:p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="bg-gray-900 p-8 rounded-2xl shadow-2xl max-w-md w-full text-center"
+              className="bg-gray-900 p-4 sm:p-6 lg:p-8 rounded-2xl shadow-2xl max-w-sm sm:max-w-md w-full text-center mx-3"
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
               transition={{ type: "spring", stiffness: 200, damping: 20 }}
             >
-              <h2 className="text-2xl font-bold mb-4 text-pink-400">Hold Up! 🚀</h2>
-              <p className="text-gray-300 mb-6">
-                You need to{" "}
-                <span className="text-blue-400 font-semibold">sign up</span> or{" "}
-                <span className="text-green-400 font-semibold">sign in</span> to
-                upload documents and use AI features.
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-bold mb-3 sm:mb-4 text-pink-400">Hold Up! 🚀</h2>
+              <p className="text-gray-300 mb-4 sm:mb-6 text-sm sm:text-base leading-relaxed">
+                You need to <span className="text-blue-400 font-semibold">sign up</span> or{" "}
+                <span className="text-green-400 font-semibold">sign in</span> to upload documents and use AI features.
               </p>
-              <div className="flex gap-4 justify-center">
-                <Button onClick={() => (window.location.href = "/signup")}>
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 lg:gap-4 justify-center">
+                <Button
+                  onClick={() => (window.location.href = "/signup")}
+                  className="text-sm sm:text-base w-full sm:w-auto"
+                >
                   Sign Up
                 </Button>
-                <Button onClick={() => (window.location.href = "/signin")}>
+                <Button
+                  onClick={() => (window.location.href = "/signin")}
+                  className="text-sm sm:text-base w-full sm:w-auto"
+                >
                   Sign In
                 </Button>
-                <Button variant="ghost" onClick={() => setShowAuthPopup(false)}>
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowAuthPopup(false)}
+                  className="text-sm sm:text-base w-full sm:w-auto"
+                >
                   Cancel
                 </Button>
               </div>
