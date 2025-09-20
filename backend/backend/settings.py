@@ -48,10 +48,10 @@ INSTALLED_APPS = [
 
     # Custom apps
     "users",
-    "knowledge_graph",
-    "api",
+    
+    
     "documents",
-    "ai_chat",
+    
 ]
 
 MIDDLEWARE = [
