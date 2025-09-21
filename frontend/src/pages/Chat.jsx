@@ -8,6 +8,7 @@ import ActionButtons from "../components/ActionButtons"
 import ResultsDisplay from "../components/ResultsDisplay"
 import QuickQueryBar from "../components/QuickQueryBar"
 import Sidebar from "../components/Sidebar"
+import {Link} from "react-router-dom"
 
 import { Button, Tabs, TabsList, TabsTrigger, TabsContent } from "../components/UIComponents"
 import Header from "../components/Header"
@@ -319,18 +320,24 @@ export default function Chat() {
                 <span className="text-green-400 font-semibold">sign in</span> to upload documents and use AI features.
               </p>
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 lg:gap-4 justify-center">
+
+              <Link to="/signup" className="w-full">
                 <Button
-                  onClick={() => (window.location.href = "/signup")}
-                  className="text-sm sm:text-base w-full sm:w-auto"
+                 className="text-sm sm:text-base w-full sm:w-auto"
                 >
                   Sign Up
-                </Button>
+                  </Button>
+              </Link>
+                
+                <Link to="/signin" className="w-full">
                 <Button
-                  onClick={() => (window.location.href = "/signin")}
+                  
                   className="text-sm sm:text-base w-full sm:w-auto"
                 >
                   Sign In
-                </Button>
+                  </Button>
+                  
+                </Link>
                 <Button
                   variant="ghost"
                   onClick={() => setShowAuthPopup(false)}
