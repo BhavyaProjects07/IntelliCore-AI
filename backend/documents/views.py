@@ -69,7 +69,7 @@ def extract_text_from_file(file_url):
                 text = soup.get_text(separator="\n")
 
         elif ext in [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"]:
-            # OCR for image files (can integrate pytesseract if needed)
+            # OCR placeholder
             img = Image.open(tmp_path)
             text = "⚠️ OCR not implemented yet for images."
 
@@ -119,6 +119,7 @@ class SummarizeView(APIView):
         if not docs.exists():
             return Response({"error": "No documents found"}, status=400)
 
+        # ✅ Extract text from Cloudinary URLs
         combined_text = "\n\n".join([extract_text_from_file(d.file.url) for d in docs])
 
         if not combined_text.strip():
