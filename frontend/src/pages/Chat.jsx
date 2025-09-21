@@ -116,11 +116,11 @@ export default function Chat() {
       setUploadedFiles((prev) => [
         ...prev,
         {
-          id: Date.now(),
-          backendId: data.id,
-          name: file.name,
-          size: file.size,
-          type: file.type,
+          backendId: data.id,   // ✅ use this consistently
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      url: data.file_url, 
         },
       ])
     } else {
