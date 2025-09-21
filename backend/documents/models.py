@@ -1,18 +1,31 @@
 from django.conf import settings
 from django.db import models
+from cloudinary.models import CloudinaryField
+
+
+from django.conf import settings
+from django.db import models
+from cloudinary.models import CloudinaryField
+
 
 class Document(models.Model):
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,   # ✅ instead of auth.User
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         null=True,
         blank=True
     )
-    file = models.FileField(upload_to="documents/")
+    # ✅ Cloudinary field instead of FileField
+    file = CloudinaryField(
+        "document",
+        folder="documents",
+        resource_type="raw"
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.file.name} uploaded by {self.user}"
+        return f"{self.file} uploaded by {self.user}"
+
 
 
 from django.db import models
